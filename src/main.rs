@@ -1,6 +1,6 @@
 #![recursion_limit = "1024"]
 
-use std::time::Duration;
+use std::{io::Error as IoError, process::Command, time::Duration};
 
 use vgtk::ext::*;
 use vgtk::lib::gio::{prelude::ApplicationExtManual, ActionExt, ApplicationFlags, SimpleAction};
@@ -10,15 +10,16 @@ use vgtk::{gtk, Component, UpdateAction, VNode};
 
 use anyhow::{Context, Result};
 
+mod sensors;
+use sensors::{Error, Sensors};
+
 fn main() {
     pretty_env_logger::init();
     let (app, scope) = vgtk::start::<Model>();
 
-    let _worker = std::thread::spawn(move || {
-        loop {
-            scope.send_message(Message::UpdateSensors(Sensors::fetch()));
-            std::thread::sleep(Duration::from_millis(100));
-        }
+    let _worker = std::thread::spawn(move || loop {
+        scope.send_message(Message::UpdateSensors(Sensors::fetch()));
+        std::thread::sleep(Duration::from_millis(250));
     });
 
     let args: Vec<String> = std::env::args().collect();
@@ -34,7 +35,7 @@ struct Model {
 #[derive(Clone, Debug)]
 enum Message {
     Init,
-    UpdateSensors(Result<Sensors, FetchSensorsError>),
+    UpdateSensors(Result<Sensors, Error>),
     Exit,
 }
 
@@ -54,6 +55,7 @@ impl Component for Model {
             }
             Message::UpdateSensors(fetch_sensors) => {
                 if let Ok(sensors) = fetch_sensors {
+                    log::debug!("{:?}", sensors);
                     UpdateAction::Render
                 } else {
                     UpdateAction::None
@@ -92,15 +94,3 @@ impl Component for Model {
         }
     }
 }
-
-#[derive(Clone, Debug, Default)]
-struct Sensors {}
-
-impl Sensors {
-    pub fn fetch() -> Result<Self, FetchSensorsError> {
-        Ok(Sensors {})
-    }
-}
-
-#[derive(Clone, Debug)]
-struct FetchSensorsError {}
